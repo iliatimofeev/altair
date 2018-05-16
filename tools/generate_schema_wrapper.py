@@ -1,17 +1,35 @@
 """Generate a schema wrapper from a schema"""
+import copy
 import os
 import sys
 import json
-from datetime import datetime
 from os.path import abspath, join, dirname
 
+import textwrap
 from urllib import request
+
+import m2r
 
 # import schemapi from here
 sys.path.insert(0, abspath(dirname(__file__)))
 from schemapi import codegen
-from schemapi.codegen import schema_class, CodeSnippet
+from schemapi.codegen import CodeSnippet
 from schemapi.utils import get_valid_identifier, SchemaInfo, indent_arglist
+
+
+class SchemaGenerator(codegen.SchemaGenerator):
+    def _process_description(self, description):
+        description = m2r.convert(description)
+        description = description.replace(m2r.prolog, '')
+        description = description.replace(":raw-html-m2r:", ":raw-html:")
+        description = description.replace(r'\ ,', ',')
+        description = description.replace(r'\ ', ' ')
+        return description.strip()
+
+
+def schema_class(*args, **kwargs):
+    return SchemaGenerator(*args, **kwargs).schema_class()
+
 
 SCHEMA_URL_TEMPLATE = ('https://vega.github.io/schema/'
                        '{library}/{version}.json')
@@ -19,11 +37,11 @@ SCHEMA_URL_TEMPLATE = ('https://vega.github.io/schema/'
 SCHEMA_VERSION = {
     'vega': {
         'v2': 'v2.6.5',
-        'v3': 'v3.2.1'
+        'v3': 'v3.3.1'
     },
     'vega-lite': {
         'v1': 'v1.3.1',
-        'v2': 'v2.3.0'
+        'v2': 'v2.4.3'
     }
 }
 
@@ -36,65 +54,98 @@ class {basename}(SchemaBase):
 """
 
 LOAD_SCHEMA = '''
-import os
+import pkgutil
 import json
 
 def load_schema():
     """Load the json schema associated with this module's functions"""
-    directory = os.path.dirname(__file__)
-    with open(os.path.join(directory, '{schemafile}')) as f:
-        return json.load(f)
+    return json.loads(pkgutil.get_data(__name__, '{schemafile}').decode('utf-8'))
 '''
 
-FIELD_TEMPLATE = '''
-class {classname}(core.{basename}):
-    """{docstring}"""
-    _class_is_valid_at_instantiation = False
-
-    {init_code}
-
+CHANNEL_MIXINS = """
+class FieldChannelMixin(object):
     def to_dict(self, validate=True, ignore=(), context=None):
-        type_ = getattr(self, 'type', Undefined)
-        context = context or {{}}
-        if not isinstance(self.field, six.string_types):
-            # field is a RepeatSpec or similar; cannot infer type
-            kwds = {{}}
-        elif type_ is Undefined and 'data' in context:
-            kwds = parse_shorthand_plus_data(self.field, context['data'])
+        context = context or {}
+        if self.shorthand is Undefined:
+            kwds = {}
+        elif isinstance(self.shorthand, (tuple, list)):
+            # If given a list of shorthands, then transform it to a list of classes
+            kwds = self._kwds.copy()
+            kwds.pop('shorthand')
+            return [self.__class__(shorthand, **kwds).to_dict()
+                    for shorthand in self.shorthand]
+        elif isinstance(self.shorthand, six.string_types):
+            kwds = parse_shorthand(self.shorthand, data=context.get('data', None))
+            type_defined = self._kwds.get('type', Undefined) is not Undefined
+            if not (type_defined or 'type' in kwds):
+                if isinstance(context.get('data', None), pd.DataFrame):
+                    raise ValueError("{0} encoding field is specified without a type; "
+                                     "the type cannot be inferred because it does not "
+                                     "match any column in the data.".format(self.shorthand))
+                else:
+                    raise ValueError("{0} encoding field is specified without a type; "
+                                     "the type cannot be automacially inferred because "
+                                     "the data is not specified as a pandas.DataFrame."
+                                     "".format(self.shorthand))
         else:
-            kwds = parse_shorthand(self.field)
-        self._kwds.update(kwds)
-        return super({classname}, self).to_dict(validate=validate,
-                                                ignore=ignore,
-                                                context=context)
-'''
+            # shorthand is not a string; we pass the definition to field
+            if self.field is not Undefined:
+                raise ValueError("both shorthand and field specified in {0}"
+                                 "".format(self.__class__.__name__))
+            # field is a RepeatSpec or similar; cannot infer type
+            kwds = {'field': self.shorthand}
 
-VALUE_TEMPLATE = '''
-class {classname}(core.{basename}):
-    """{docstring}"""
-    {init_code}
+        # set shorthand to Undefined, because it's not part of the schema
+        self.shorthand = Undefined
+        self._kwds.update({k: v for k, v in kwds.items()
+                           if self._kwds.get(k, Undefined) is Undefined})
+        return super(FieldChannelMixin, self).to_dict(
+            validate=validate,
+            ignore=ignore,
+            context=context
+        )
 
+
+class ValueChannelMixin(object):
     def to_dict(self, validate=True, ignore=(), context=None):
-        context = context or {{}}
+        context = context or {}
         condition = getattr(self, 'condition', Undefined)
         copy = self  # don't copy unless we need to
         if condition is not Undefined:
             if isinstance(condition, core.SchemaBase):
                 pass
             elif 'field' in condition and 'type' not in condition:
-                if 'data' in context:
-                    kwds = parse_shorthand_plus_data(condition['field'], context['data'])
-                else:
-                    kwds = parse_shorthand(condition['field'])
+                kwds = parse_shorthand(condition['field'], context.get('data', None))
                 copy = self.copy()
                 copy.condition.update(kwds)
-        return super({classname}, copy).to_dict(validate=validate,
-                                                ignore=ignore,
-                                                context=context)
-'''
+        return super(ValueChannelMixin, copy).to_dict(validate=validate,
+                                                      ignore=ignore,
+                                                      context=context)
+"""
+
+class FieldSchemaGenerator(SchemaGenerator):
+    schema_class_template = textwrap.dedent('''
+    class {classname}(FieldChannelMixin, core.{basename}):
+        """{docstring}"""
+        _class_is_valid_at_instantiation = False
+
+        {init_code}
+    ''')
+
+
+class ValueSchemaGenerator(SchemaGenerator):
+    schema_class_template = textwrap.dedent('''
+    class {classname}(ValueChannelMixin, core.{basename}):
+        """{docstring}"""
+        _class_is_valid_at_instantiation = False
+
+        {init_code}
+    ''')
 
 
 HEADER = """\
+# -*- coding: utf-8 -*-
+#
 # The contents of this file are automatically written by
 # tools/generate_schema_wrapper.py. Do not modify directly.
 """
@@ -122,8 +173,8 @@ def copy_schemapi_util():
                                     'utils', 'schemapi.py'))
 
     print("Copying\n {0}\n  -> {1}".format(source_path, destination_path))
-    with open(source_path, 'r') as source:
-        with open(destination_path, 'w') as dest:
+    with open(source_path, 'r', encoding='utf8') as source:
+        with open(destination_path, 'w', encoding='utf8') as dest:
             dest.write(HEADER)
             dest.writelines(source.readlines())
 
@@ -134,8 +185,8 @@ def copy_schemapi_util():
                                     'utils', 'tests', 'test_schemapi.py'))
 
     print("Copying\n {0}\n  -> {1}".format(source_path, destination_path))
-    with open(source_path, 'r') as source:
-        with open(destination_path, 'w') as dest:
+    with open(source_path, 'r', encoding='utf8') as source:
+        with open(destination_path, 'w', encoding='utf8') as dest:
             dest.write(HEADER)
             dest.writelines(source.readlines())
 
@@ -145,7 +196,7 @@ def generate_vegalite_schema_wrapper(schema_file):
     # TODO: generate simple tests for each wrapper
     basename = 'VegaLiteSchema'
 
-    with open(schema_file) as f:
+    with open(schema_file, encoding='utf8') as f:
         rootschema = json.load(f)
     contents = [HEADER,
                 "from altair.utils.schemapi import SchemaBase, Undefined",
@@ -171,7 +222,7 @@ def generate_vega_schema_wrapper(schema_file):
     # TODO: generate simple tests for each wrapper
     basename = 'VegaSchema'
 
-    with open(schema_file) as f:
+    with open(schema_file, encoding='utf8') as f:
         rootschema = json.load(f)
     contents = [HEADER,
                 "from altair.utils.schemapi import SchemaBase, Undefined",
@@ -194,16 +245,19 @@ def generate_vega_schema_wrapper(schema_file):
 def generate_vegalite_channel_wrappers(schemafile, imports=None,
                                        encoding_def='Encoding'):
     # TODO: generate __all__ for top of file
-    with open(schemafile) as f:
+    with open(schemafile, encoding='utf8') as f:
         schema = json.load(f)
     if imports is None:
         imports = ["import six",
                    "from . import core",
+                   "import pandas as pd",
                    "from altair.utils.schemapi import Undefined",
-                   "from altair.utils import parse_shorthand, parse_shorthand_plus_data"]
+                   "from altair.utils import parse_shorthand"]
     contents = [HEADER]
     contents.extend(imports)
     contents.append('')
+
+    contents.append(CHANNEL_MIXINS)
 
     encoding = SchemaInfo(schema['definitions'][encoding_def],
                           rootschema=schema)
@@ -221,21 +275,21 @@ def generate_vegalite_channel_wrappers(schemafile, imports=None,
             classname = prop.title()
 
             if 'Value' in basename:
-                template = VALUE_TEMPLATE
+                Generator = ValueSchemaGenerator
                 classname += 'Value'
                 nodefault = ['value']
             else:
-                template = FIELD_TEMPLATE
-                nodefault = ['field']
-            docstring = codegen.docstring(classname=classname, schema=defschema,
-                                          rootschema=schema, indent=4)
-            init_code = codegen.init_code(classname=classname, schema=defschema,
-                                          rootschema=schema, indent=4,
-                                          nodefault=nodefault).rstrip()
-            contents.append(template.format(classname=classname,
-                                            basename=basename,
-                                            docstring=docstring,
-                                            init_code=init_code))
+                Generator = FieldSchemaGenerator
+                nodefault = []
+                defschema = copy.deepcopy(schema['definitions'][basename])
+                defschema['properties']['shorthand'] = {'type': 'string',
+                                                        'description': 'shorthand for field, aggregate, and type'}
+                defschema['required'] = ['shorthand']
+
+            gen = Generator(classname=classname, basename=basename,
+                            schema=defschema, rootschema=schema,
+                            nodefault=nodefault)
+            contents.append(gen.schema_class())
     return '\n'.join(contents)
 
 
@@ -257,14 +311,14 @@ def mark_{mark}({def_arglist}):
 
 def generate_vegalite_mark_mixin(schemafile, mark_enum='Mark',
                                  mark_def='MarkDef'):
-    with open(schemafile) as f:
+    with open(schemafile, encoding='utf8') as f:
         schema = json.load(f)
     marks = schema['definitions'][mark_enum]['enum']
     info = SchemaInfo({'$ref': '#/definitions/' + mark_def},
                       rootschema=schema)
 
     # adapted from SchemaInfo.init_code
-    nonkeyword, required, kwds, additional = codegen._get_args(info)
+    nonkeyword, required, kwds, invalid_kwds, additional = codegen._get_args(info)
     required -= {'type'}
     kwds -= {'type'}
 
@@ -273,7 +327,7 @@ def generate_vegalite_mark_mixin(schemafile, mark_enum='Mark',
     dict_args = ['{0}={0}'.format(p)
                  for p in (sorted(required) + sorted(kwds))]
 
-    if additional:
+    if additional or invalid_kwds:
         def_args.append('**kwds')
         dict_args.append('**kwds')
 
@@ -319,7 +373,7 @@ def generate_vegalite_config_mixin(schemafile):
                "from altair.utils import use_signature"]
     code = ["class ConfigMethodMixin(object):",
             '    """A mixin class that defines config methods"""']
-    with open(schemafile) as f:
+    with open(schemafile, encoding='utf8') as f:
         schema = json.load(f)
     info = SchemaInfo({'$ref': '#/definitions/Config'},
                       rootschema=schema)
@@ -331,7 +385,7 @@ def generate_vegalite_config_mixin(schemafile):
     # configure_prop() methods
     for prop, prop_info in info.properties.items():
         classname = prop_info.refname
-        if classname:
+        if classname and classname.endswith('Config'):
             method = CONFIG_PROP_METHOD.format(classname=classname,
                                                prop=prop)
             code.append('\n    '.join(method.splitlines()))
@@ -353,7 +407,8 @@ def vegalite_main():
         # Generate __init__.py file
         outfile = join(schemapath, '__init__.py')
         print("Writing {0}".format(outfile))
-        with open(outfile, 'w') as f:
+        with open(outfile, 'w', encoding='utf8') as f:
+            f.write("# flake8: noqa\n")
             f.write("from .core import *\nfrom .channels import *\n")
             f.write("SCHEMA_VERSION = {0!r}\n"
                     "".format(SCHEMA_VERSION[library][version]))
@@ -364,14 +419,14 @@ def vegalite_main():
         outfile = join(schemapath, 'core.py')
         print("Generating\n {0}\n  ->{1}".format(schemafile, outfile))
         file_contents = generate_vegalite_schema_wrapper(schemafile)
-        with open(outfile, 'w') as f:
+        with open(outfile, 'w', encoding='utf8') as f:
             f.write(file_contents)
 
         # Generate the channel wrappers
         outfile = join(schemapath, 'channels.py')
         print("Generating\n {0}\n  ->{1}".format(schemafile, outfile))
         code = generate_vegalite_channel_wrappers(schemafile, encoding_def=encoding_defs[version])
-        with open(outfile, 'w') as f:
+        with open(outfile, 'w', encoding='utf8') as f:
             f.write(code)
 
         if version != 'v1':
@@ -381,7 +436,7 @@ def vegalite_main():
             mark_imports, mark_mixin = generate_vegalite_mark_mixin(schemafile)
             config_imports, config_mixin = generate_vegalite_config_mixin(schemafile)
             imports = sorted(set(mark_imports + config_imports))
-            with open(outfile, 'w') as f:
+            with open(outfile, 'w', encoding='utf8') as f:
                 f.write(HEADER)
                 f.write('\n'.join(imports))
                 f.write('\n\n\n')
@@ -404,7 +459,8 @@ def vega_main():
         # Generate __init__.py file
         outfile = join(schemapath, '__init__.py')
         print("Writing {0}".format(outfile))
-        with open(outfile, 'w') as f:
+        with open(outfile, 'w', encoding='utf8') as f:
+            f.write("# flake8: noqa\n")
             f.write("from .core import *\n\n")
             f.write("SCHEMA_VERSION = {0!r}\n"
                     "".format(SCHEMA_VERSION[library][version]))
@@ -415,7 +471,7 @@ def vega_main():
         outfile = join(schemapath, 'core.py')
         print("Generating\n {0}\n  ->{1}".format(schemafile, outfile))
         file_contents = generate_vega_schema_wrapper(schemafile)
-        with open(outfile, 'w') as f:
+        with open(outfile, 'w', encoding='utf8') as f:
             f.write(file_contents)
 
 

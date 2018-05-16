@@ -28,7 +28,7 @@ TYPECODE_MAP = {'ordinal': 'O',
 INV_TYPECODE_MAP = {v: k for k, v in TYPECODE_MAP.items()}
 
 
-def infer_vegalite_type(data, field=None):
+def infer_vegalite_type(data):
     """
     From an array-like input, infer the correct vega typecode
     ('ordinal', 'nominal', 'quantitative', or 'temporal')
@@ -36,14 +36,7 @@ def infer_vegalite_type(data, field=None):
     Parameters
     ----------
     data: Numpy array or Pandas Series
-    field: str column name
     """
-    # See if we can read the type from the field
-    if field is not None:
-        parsed = parse_shorthand(field)
-        if parsed.get('type'):
-            return parsed['type']
-
     # Otherwise, infer based on the dtype of the input
     typ = infer_dtype(data)
 
@@ -114,52 +107,7 @@ def sanitize_dataframe(df):
     return df
 
 
-def prepare_vegalite_spec(spec, data=None):
-    """Prepare a Vega-Lite spec for sending to the frontend.
-
-    This allows data to be passed in either as part of the spec
-    or separately. If separately, the data is assumed to be a
-    pandas DataFrame or object that can be converted to to a DataFrame.
-    Note that if data is not None, this modifies spec in-place
-    """
-
-    if isinstance(data, pd.DataFrame):
-        # We have to do the isinstance test first because we can't
-        # compare a DataFrame to None.
-        data = sanitize_dataframe(data)
-        spec['data'] = {'values': data.to_dict(orient='records')}
-    elif data is None:
-        # Data is either passed in spec or error
-        if 'data' not in spec:
-            raise ValueError('No data provided')
-    else:
-        # As a last resort try to pass the data to a DataFrame and use it
-        data = pd.DataFrame(data)
-        data = sanitize_dataframe(data)
-        spec['data'] = {'values': data.to_dict(orient='records')}
-    return spec
-
-
-def prepare_vega_spec(spec, data=None):
-    """Prepare a Vega spec for sending to the frontend.
-
-    This allows data to be passed in either as part of the spec
-    or separately. If separately, the data is assumed to be a
-    pandas DataFrame or object that can be converted to to a DataFrame.
-    Note that if data is not None, this modifies spec in-place
-    """
-
-    if isinstance(data, dict):
-        spec['data'] = []
-        # We have to do the isinstance test first because we can't
-        # compare a DataFrame to None.
-        for key, value in data.items():
-            data = sanitize_dataframe(value)
-            spec['data'].append({'name': key, 'values': data.to_dict(orient='records')})
-    return spec
-
-
-def parse_shorthand(shorthand):
+def _parse_shorthand(shorthand):
     """
     Parse the shorthand expression for aggregation, field, and type.
 
@@ -193,8 +141,11 @@ def parse_shorthand(shorthand):
     # build regular expressions
     units = dict(field='(?P<field>.*)',
                  type='(?P<type>{0})'.format('|'.join(valid_typecodes)),
+                 count='(?P<aggregate>count)',
                  aggregate='(?P<aggregate>{0})'.format('|'.join(valid_aggregates)))
-    patterns = [r'{aggregate}\({field}\):{type}',
+    patterns = [r'{count}\(\)',
+                r'{count}\(\):{type}',
+                r'{aggregate}\({field}\):{type}',
                 r'{aggregate}\({field}\)',
                 r'{field}:{type}',
                 r'{field}']
@@ -210,17 +161,31 @@ def parse_shorthand(shorthand):
     if type_:
         match['type'] = INV_TYPECODE_MAP.get(type_, type_)
 
+    # counts are quantitative by default
+    if match == {'aggregate': 'count'}:
+        match['type'] = 'quantitative'
+
     return match
 
 
-def parse_shorthand_plus_data(shorthand, data):
-    """Parse a field shorthand, and use data to infer type if not specified
+def parse_shorthand(shorthand, data=None):
+    """Parse the shorthand expression for aggregation, field, and type.
+
+    These are of the form:
+
+    - "col_name"
+    - "col_name:O"
+    - "average(col_name)"
+    - "average(col_name):O"
+
+    Optionally, a dataframe may be supplied, from which the type
+    will be inferred if not specified in the shorthand.
 
     Parameters
     ----------
     shorthand: str
         Shorthand string of the form "agg(col):typ"
-    data : pd.DataFrame
+    data : pd.DataFrame (optional)
         Dataframe from which to infer types
 
     Returns
@@ -233,34 +198,38 @@ def parse_shorthand_plus_data(shorthand, data):
     --------
     >>> data = pd.DataFrame({'foo': ['A', 'B', 'A', 'B'],
     ...                      'bar': [1, 2, 3, 4]})
-    ...
 
-    >>> parse_shorthand_plus_data('foo', data)
+    >>> parse_shorthand('name')
+    {'field': 'name'}
+
+    >>> parse_shorthand('average(col)')  # doctest: +SKIP
+    {'aggregate': 'average', 'field': 'col'}
+
+    >>> parse_shorthand('foo:O')  # doctest: +SKIP
+    {'field': 'foo', 'type': 'ordinal'}
+
+    >>> parse_shorthand('min(foo):Q')  # doctest: +SKIP
+    {'aggregate': 'min', 'field': 'foo', 'type': 'quantitative'}
+
+    >>> parse_shorthand('foo', data)  # doctest: +SKIP
     {'field': 'foo', 'type': 'nominal'}
 
-    >>> parse_shorthand_plus_data('bar', data)
+    >>> parse_shorthand('bar', data)  # doctest: +SKIP
     {'field': 'bar', 'type': 'quantitative'}
 
-    >>> parse_shorthand_plus_data('bar:O', data)
+    >>> parse_shorthand('bar:O', data)  # doctest: +SKIP
     {'field': 'bar', 'type': 'ordinal'}
 
-    >>> parse_shorthand_plus_data('sum(bar)', data)
+    >>> parse_shorthand('sum(bar)', data)  # doctest: +SKIP
     {'aggregate': 'sum', 'field': 'bar', 'type': 'quantitative'}
+
+    >>> parse_shorthand('count()', data)  # doctest: +SKIP
+    {'aggregate': 'count', 'type': 'quantitative'}
     """
-    attrs = parse_shorthand(shorthand)
-    if 'type' not in attrs and attrs['field'] != '*':
-        if not isinstance(data, pd.DataFrame):
-            raise ValueError("'{0}' encoding field is specified without a type, "
-                             "the type cannot be automacially inferred because "
-                             "the data is not specified as a pandas.DataFrame."
-                             "".format(attrs["field"]))
-        if attrs['field'] not in data.columns:
-            raise ValueError("'{0}' encoding field is specified without a type, "
-                             "and the type cannot be automatically inferred "
-                             "because it does not match any column names within "
-                             "the data. Valid columns are {1}"
-                             "".format(attrs["field"], list(data.columns)))
-        attrs['type'] = infer_vegalite_type(data[attrs['field']])
+    attrs = _parse_shorthand(shorthand)
+    if isinstance(data, pd.DataFrame) and 'type' not in attrs:
+        if 'field' in attrs and attrs['field'] in data.columns:
+            attrs['type'] = infer_vegalite_type(data[attrs['field']])
     return attrs
 
 
@@ -274,9 +243,15 @@ def use_signature(Obj):
 
         # Supplement the docstring of f with information from Obj
         doclines = Obj.__doc__.splitlines()
-        if not f.__doc__:
-            f.__doc__ = ""
-        f.__doc__ += '\n'.join(doclines[1:])
+        if f.__doc__:
+            doc = f.__doc__ + '\n'.join(doclines[1:])
+        else:
+            doc = '\n'.join(doclines)
+        try:
+            f.__doc__ = doc
+        except AttributeError:
+            # __doc__ is not modifiable for classes in Python < 3.3
+            pass
         return f
     return decorate
 
@@ -330,9 +305,10 @@ def update_nested(original, update, copy=False):
     --------
     >>> original = {'x': {'b': 2, 'c': 4}}
     >>> update = {'x': {'b': 5, 'd': 6}, 'y': 40}
-    >>> update_nested(original, update)
-    >>> original
-    {'x': {'b': 5, 'c': 2, 'd': 6}, 'y': 40}
+    >>> update_nested(original, update)  # doctest: +SKIP
+    {'x': {'b': 5, 'c': 4, 'd': 6}, 'y': 40}
+    >>> original  # doctest: +SKIP
+    {'x': {'b': 5, 'c': 4, 'd': 6}, 'y': 40}
     """
     if copy:
         original = deepcopy(original)

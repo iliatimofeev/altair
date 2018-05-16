@@ -1,9 +1,8 @@
-import json
-
 import jsonschema
 import pytest
 
-from ..schemapi import UndefinedType, SchemaBase, Undefined
+from ..schemapi import (UndefinedType, SchemaBase, Undefined, _FromDict,
+                        SchemaValidationError)
 
 # Make tests inherit from _TestSchema, so that when we test from_dict it won't
 # try to use SchemaBase objects defined elsewhere as wrappers.
@@ -267,3 +266,30 @@ def test_class_with_no_schema():
     with pytest.raises(ValueError) as err:
         BadSchema(4)
     assert str(err.value).startswith("Cannot instantiate object")
+
+
+@pytest.mark.parametrize('use_json', [True, False])
+def test_hash_schema(use_json):
+    classes = _TestSchema._default_wrapper_classes()
+
+    for cls in classes:
+        hsh1 = _FromDict.hash_schema(cls._schema, use_json=use_json)
+        hsh2 = _FromDict.hash_schema(cls._schema, use_json=use_json)
+        assert hsh1 == hsh2
+        assert hash(hsh1) == hash(hsh2)
+
+
+def test_schema_validation_error():
+    try:
+        MySchema(a={'foo': 4})
+        the_err = None
+    except jsonschema.ValidationError as err:
+        the_err = err
+
+    assert isinstance(the_err, SchemaValidationError)
+    message = str(the_err)
+
+    assert message.startswith('Invalid specification')
+    assert 'test_schemapi.MySchema->a' in message
+    assert "validating {0!r}".format(the_err.validator) in message
+    assert the_err.message in message

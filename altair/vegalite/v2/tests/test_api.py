@@ -5,10 +5,29 @@ import json
 import os
 import tempfile
 
+import jsonschema
 import pytest
 import pandas as pd
 
 import altair.vegalite.v2 as alt
+
+try:
+    import selenium
+except ImportError:
+    selenium = None
+
+
+@pytest.fixture
+def basic_chart():
+    data = pd.DataFrame({
+        'a': ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'],
+        'b': [28, 55, 43, 91, 81, 53, 19, 87, 52]
+    })
+
+    return alt.Chart(data).mark_bar().encode(
+        x='a',
+        y='b'
+    )
 
 
 def test_chart_data_types():
@@ -71,6 +90,30 @@ def test_chart_infer_types():
     assert dct['encoding']['y']['type'] == 'ordinal'
 
 
+def test_multiple_encodings():
+    encoding_dct = [{'field': 'value', 'type': 'quantitative'},
+                    {'field': 'name', 'type': 'nominal'}]
+    chart1 = alt.Chart('data.csv').mark_point().encode(
+        detail=['value:Q', 'name:N'],
+        tooltip=['value:Q', 'name:N']
+    )
+
+    chart2 = alt.Chart('data.csv').mark_point().encode(
+        alt.Detail(['value:Q', 'name:N']),
+        alt.Tooltip(['value:Q', 'name:N'])
+    )
+
+    chart3 = alt.Chart('data.csv').mark_point().encode(
+        [alt.Detail('value:Q'), alt.Detail('name:N')],
+        [alt.Tooltip('value:Q'), alt.Tooltip('name:N')]
+    )
+
+    for chart in [chart1, chart2, chart3]:
+        dct = chart.to_dict()
+        assert dct['encoding']['detail'] == encoding_dct
+        assert dct['encoding']['tooltip'] == encoding_dct
+
+
 def test_chart_operations():
     data = pd.DataFrame({'x': pd.date_range('2012', periods=10, freq='Y'),
                          'y': range(10),
@@ -104,7 +147,7 @@ def test_selection_to_dict():
 
     # test some value selections
     # Note: X and Y cannot have conditions
-    chart_values = alt.Chart('path/to/data.json').mark_point().encode(
+    alt.Chart('path/to/data.json').mark_point().encode(
         color=alt.condition(brush, alt.ColorValue('red'), alt.ColorValue('blue')),
         opacity=alt.condition(brush, alt.value(0.5), alt.value(1.0)),
         text=alt.condition(brush, alt.TextValue('foo'), alt.value('bar'))
@@ -113,7 +156,7 @@ def test_selection_to_dict():
     # test some field selections
     # Note: X and Y cannot have conditions
     # Conditions cannot both be fields
-    chart_fields = alt.Chart('path/to/data.json').mark_point().encode(
+    alt.Chart('path/to/data.json').mark_point().encode(
         color=alt.condition(brush, alt.Color('col1:N'), alt.value('blue')),
         opacity=alt.condition(brush, 'col1:N', alt.value(0.5)),
         text=alt.condition(brush, alt.value('abc'), alt.Text('col2:N')),
@@ -122,10 +165,9 @@ def test_selection_to_dict():
 
 
 @pytest.mark.parametrize('format', ['html', 'json', 'png', 'svg'])
-def test_savechart(format):
-    from ..examples.bar import chart
-
-    if format in ['html', 'json']:
+@pytest.mark.skipif('not selenium')
+def test_save(format, basic_chart):
+    if format in ['html', 'json', 'svg']:
         out = io.StringIO()
         mode = 'r'
     else:
@@ -134,13 +176,12 @@ def test_savechart(format):
     fid, filename = tempfile.mkstemp(suffix='.' + format)
 
     try:
-        # selenium may not be installed; skip the test if we get a selenium error.
         try:
-            chart.savechart(out, format=format)
-            chart.savechart(filename)
-        except RuntimeError as err:
-            if format in ['png', 'svg'] and 'selenium' in str(err):
-                pytest.skip("selenium installation required for png/svg export")
+            basic_chart.save(out, format=format)
+            basic_chart.save(filename)
+        except ValueError as err:
+            if str(err).startswith('Internet connection'):
+                pytest.skip("web connection required for png/svg export")
             else:
                 raise
 
@@ -174,3 +215,166 @@ def test_facet_parse():
     assert 'data' not in dct['spec']
     assert dct['facet'] == {'column': {'field': 'column', 'type': 'ordinal'},
                             'row': {'field': 'row', 'type': 'nominal'}}
+
+
+def test_facet_parse_data():
+    data = pd.DataFrame({'x': range(5), 'y': range(5), 'row': list('abcab')})
+    chart = alt.Chart(data).mark_point().encode(
+        x='x',
+        y='y:O'
+    ).facet(
+        row='row',
+        column='column:O'
+    )
+    dct = chart.to_dict()
+    assert 'values' in dct['data']
+    assert 'data' not in dct['spec']
+    assert dct['facet'] == {'column': {'field': 'column', 'type': 'ordinal'},
+                            'row': {'field': 'row', 'type': 'nominal'}}
+
+
+def test_SelectionMapping():
+    # test instantiation of selections
+    interval = alt.selection_interval(name='selec_1')
+    assert interval['selec_1'].type == 'interval'
+    assert interval._get_name() == 'selec_1'
+
+    single = alt.selection_single(name='selec_2')
+    assert single['selec_2'].type == 'single'
+    assert single._get_name() == 'selec_2'
+
+    multi = alt.selection_multi(name='selec_3')
+    assert multi['selec_3'].type == 'multi'
+    assert multi._get_name() == 'selec_3'
+
+    # test addition
+    x = single + multi + interval
+    assert set(x.to_dict().keys()) == {'selec_1', 'selec_2', 'selec_3'}
+
+    y = single.copy()
+    y += multi
+    y += interval
+    assert x.to_dict() == y.to_dict()
+
+    # test logical operations
+    x = single & multi
+    assert isinstance(x, alt.SelectionAnd)
+
+    y = single | multi
+    assert isinstance(y, alt.SelectionOr)
+
+
+def test_transforms():
+    # aggregate transform
+    agg1 = alt.AggregatedFieldDef(**{'as': 'x1', 'op': 'mean', 'field': 'y'})
+    agg2 = alt.AggregatedFieldDef(**{'as': 'x2', 'op': 'median', 'field': 'z'})
+    chart = alt.Chart().transform_aggregate([agg1], ['foo'], x2='median(z)')
+    kwds = dict(aggregate=[agg1, agg2], groupby=['foo'])
+    assert chart.transform == [alt.AggregateTransform(**kwds)]
+
+    # bin transform
+    chart = alt.Chart().transform_bin("binned", field="field", bin=True)
+    kwds = {'as': 'binned', 'field': 'field', 'bin': True}
+    assert chart.transform == [alt.BinTransform(**kwds)]
+
+    # calcualte transform
+    chart = alt.Chart().transform_calculate("calc", "datum.a * 4")
+    kwds = {'as': 'calc', 'calculate': 'datum.a * 4'}
+    assert chart.transform == [alt.CalculateTransform(**kwds)]
+
+    # filter transform
+    chart = alt.Chart().transform_filter("datum.a < 4")
+    assert chart.transform == [alt.FilterTransform(filter="datum.a < 4")]
+
+    # lookup transform
+    lookup_data = alt.LookupData(alt.UrlData('foo.csv'), 'id', ['rate'])
+    chart = alt.Chart().transform_lookup(from_=lookup_data, as_='a',
+                                         lookup='a', default='b')
+    kwds = {'from': lookup_data,
+            'as': 'a',
+            'lookup': 'a',
+            'default': 'b'}
+    assert chart.transform == [alt.LookupTransform(**kwds)]
+
+    # timeUnit transform
+    chart = alt.Chart().transform_timeunit("foo", field="x", timeUnit="date")
+    kwds = {'as': 'foo', 'field': 'x', 'timeUnit': 'date'}
+    assert chart.transform == [alt.TimeUnitTransform(**kwds)]
+
+
+def test_resolve_methods():
+    chart = alt.LayerChart().resolve_axis(x='shared', y='independent')
+    assert chart.resolve == alt.Resolve(axis=alt.AxisResolveMap(x='shared', y='independent'))
+
+    chart = alt.LayerChart().resolve_legend(color='shared', fill='independent')
+    assert chart.resolve == alt.Resolve(legend=alt.LegendResolveMap(color='shared', fill='independent'))
+
+    chart = alt.LayerChart().resolve_scale(x='shared', y='independent')
+    assert chart.resolve == alt.Resolve(scale=alt.ScaleResolveMap(x='shared', y='independent'))
+
+    with pytest.raises(ValueError) as err:
+        alt.Chart().resolve_axis(x='shared')
+    assert str(err.value).endswith("object has no attribute 'resolve'")
+
+
+def test_add_selection():
+    selections = [alt.selection_interval(),
+                  alt.selection_single(),
+                  alt.selection_multi()]
+    chart = alt.Chart().mark_point().add_selection(
+        selections[0]
+    ).add_selection(
+        selections[1],
+        selections[2]
+    )
+    expected = selections[0] + selections[1] + selections[2]
+    assert chart.selection.to_dict() == expected.to_dict()
+
+
+def test_LookupData():
+    df = pd.DataFrame({'x': [1, 2, 3], 'y': [4, 5, 6]})
+    lookup = alt.LookupData(data=df, key='x')
+    dct = lookup.to_dict()
+    assert dct['key'] == 'x'
+    assert dct['data'] == {'values': [{'x': 1, 'y': 4},
+                                      {'x': 2, 'y': 5},
+                                      {'x': 3, 'y': 6}]}
+
+
+def test_themes():
+    chart = alt.Chart('foo.txt').mark_point()
+    active = alt.themes.active
+
+    try:
+        alt.themes.enable('default')
+        assert chart.to_dict()['config'] == {"view": {"width": 400, "height": 300}}
+
+        alt.themes.enable('opaque')
+        assert chart.to_dict()['config'] == {"background": "white",
+                                             "view": {"width": 400, "height": 300}}
+
+        alt.themes.enable('none')
+        assert 'config' not in chart.to_dict()
+
+    finally:
+        # re-enable the original active theme
+        alt.themes.enable(active)
+
+
+def test_chart_from_dict():
+    base = alt.Chart('data.csv').mark_point().encode(x='x:Q', y='y:Q')
+
+    charts = [base,
+              base + base,
+              base | base,
+              base & base,
+              base.facet(row='c:N'),
+              base.repeat(row=['c:N', 'd:N'])]
+
+    for chart in charts:
+        chart_out = alt.Chart.from_dict(chart.to_dict())
+        assert type(chart_out) is type(chart)
+
+    # test that an invalid spec leads to a schema validation error
+    with pytest.raises(jsonschema.ValidationError):
+        alt.Chart.from_dict({'invalid': 'spec'})

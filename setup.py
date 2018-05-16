@@ -47,6 +47,15 @@ def read(path, encoding='utf-8'):
         return fp.read()
 
 
+def get_install_requirements(path):
+    content = read(path)
+    return [
+        req
+        for req in content.split("\n")
+        if req != '' and not req.startswith('#')
+    ]
+
+
 def version(path):
     """Obtain the packge version from a python file e.g. pkg/__init__.py
 
@@ -91,20 +100,13 @@ PACKAGE_DATA        = {'altair': [
                                   'vegalite/v2/schema/*.json'
                                   ]
                       }
-AUTHOR              = "Brian E. Granger & Jake VanderPlas"
+AUTHOR              = "Brian E. Granger / Jake VanderPlas"
 AUTHOR_EMAIL        = "jakevdp@gmail.com"
 URL                 = 'http://altair-viz.github.io'
 DOWNLOAD_URL        = 'http://github.com/altair-viz/altair/'
 LICENSE             = 'BSD 3-clause'
-INSTALL_REQUIRES    = ['entrypoints',
-                       'ipython',
-                       'jsonschema',
-                       'numpy',
-                       'pandas',
-                       'pytest',
-                       'six',
-                       'toolz',
-                       'vega_datasets']
+INSTALL_REQUIRES    = get_install_requirements("requirements.txt")
+DEV_REQUIRES        = get_install_requirements("requirements_dev.txt")
 VERSION             = version('altair/__init__.py')
 
 
@@ -120,13 +122,17 @@ setup(name=NAME,
       packages=PACKAGES,
       package_data=PACKAGE_DATA,
       install_requires=INSTALL_REQUIRES,
+      extras_require={
+        'dev': DEV_REQUIRES
+      },
       classifiers=[
-        'Development Status :: 4 - Beta',
+        'Development Status :: 5 - Production/Stable',
         'Environment :: Console',
         'Intended Audience :: Science/Research',
         'License :: OSI Approved :: BSD License',
         'Natural Language :: English',
         'Programming Language :: Python :: 2.7',
         'Programming Language :: Python :: 3.4',
-        'Programming Language :: Python :: 3.5'],
+        'Programming Language :: Python :: 3.5',
+        'Programming Language :: Python :: 3.6'],
      )

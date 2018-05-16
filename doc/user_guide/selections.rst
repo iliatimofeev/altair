@@ -48,8 +48,8 @@ property:
         x='Miles_per_Gallon:Q',
         y='Horsepower:Q',
         color='Origin:N'
-    ).properties(
-        selection=brush
+    ).add_selection(
+        brush
     )
 
 The result above is a chart that allows you to click and drag to create
@@ -68,8 +68,8 @@ for points outside the selection:
         x='Miles_per_Gallon:Q',
         y='Horsepower:Q',
         color=alt.condition(brush, 'Origin:N', alt.value('lightgray'))
-    ).properties(
-        selection=brush
+    ).add_selection(
+        brush
     )
 
 As you can see, with this simple change, the color of the points responds
@@ -89,8 +89,9 @@ tied to ``"Miles_per_Gallon"``
         color=alt.condition(brush, 'Origin:N', alt.value('lightgray'))
     ).properties(
         width=250,
-        height=250,
-        selection=brush
+        height=250
+    ).add_selection(
+        brush
     )
 
     chart.encode(x='Acceleration:Q') | chart.encode(x='Miles_per_Gallon:Q')
@@ -114,8 +115,9 @@ We can modify the brush definition, and leave the rest of the code unchanged:
         color=alt.condition(brush, 'Origin:N', alt.value('lightgray'))
     ).properties(
         width=250,
-        height=250,
-        selection=brush
+        height=250
+    ).add_selection(
+        brush
     )
 
     chart.encode(x='Acceleration:Q') | chart.encode(x='Miles_per_Gallon:Q')
@@ -140,11 +142,12 @@ selection:
         return alt.Chart(cars).mark_rect().encode(
             x="Cylinders:O",
             y="Origin:N",
-            color=alt.condition(selector, 'count(*):Q', alt.value('lightgray'))
+            color=alt.condition(selector, 'count()', alt.value('lightgray'))
         ).properties(
             width=300,
-            height=180,
-            selection=selector
+            height=180
+        ).add_selection(
+            selector
         )
 
 Next we'll use this function to demonstrate the properties of various selections.
@@ -182,8 +185,8 @@ chart scales; this is how Altair plots can be made interactive:
         x='Horsepower:Q',
         y='Miles_per_Gallon:Q',
         color='Origin:N'
-    ).properties(
-        selection=scales
+    ).add_selection(
+        scales
     )
 
 Because this is such a common pattern, Altair provides the :meth:`Chart.interactive`
@@ -236,7 +239,7 @@ over them with your mouse:
 Further Examples
 ~~~~~~~~~~~~~~~~
 Now that you understand the basics of Altair selections, you might wish to look
-through the :ref:`gallery-category-interactive` section of the example gallery
+through the :ref:`gallery-category-Interactive Charts` section of the example gallery
 for ideas about how they can be applied to more interesting charts.
 
 For more information on how to fine-tune selections, including specifying other

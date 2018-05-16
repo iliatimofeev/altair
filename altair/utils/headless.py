@@ -2,16 +2,33 @@
 Utilities that use selenium + chrome headless to save figures
 """
 
-import base64
-import io
-import json
+import contextlib
 import os
 import tempfile
 
-import six
+try:
+    import selenium.webdriver
+except ImportError:
+    selenium = None
 
-from .importing import attempt_import
-from .core import write_file_or_filename
+
+@contextlib.contextmanager
+def temporary_filename(**kwargs):
+    """Create and clean-up a temporary file
+
+    Arguments are the same as those passed to tempfile.mkstemp
+
+    We could use tempfile.NamedTemporaryFile here, but that causes issues on
+    windows (see https://bugs.python.org/issue14243).
+    """
+    filedescriptor, filename = tempfile.mkstemp(**kwargs)
+    os.close(filedescriptor)
+
+    try:
+        yield filename
+    finally:
+        if os.path.exists(filename):
+            os.remove(filename)
 
 
 HTML_TEMPLATE = """
@@ -19,9 +36,9 @@ HTML_TEMPLATE = """
 <html>
 <head>
   <title>Embedding Vega-Lite</title>
-  <script src="https://cdn.jsdelivr.net/npm/vega@3.2"></script>
-  <script src="https://cdn.jsdelivr.net/npm/vega-lite@2.3"></script>
-  <script src="https://cdn.jsdelivr.net/npm/vega-embed@3.0.0"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vega@{vega_version}"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vega-lite@{vegalite_version}"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vega-embed@{vegaembed_version}"></script>
 </head>
 <body>
   <div id="vis"></div>
@@ -72,76 +89,81 @@ EXTRACT_CODE = {
             .toSVG()
             .then(done)
             .catch(function(err) { console.error(err); });
+        """,
+'vega': """
+        var spec = arguments[0];
+        var mode = arguments[1];
+        var done = arguments[2];
+
+        if(mode === 'vega-lite'){
+          // compile vega-lite to vega
+          const compiled = vl.compile(spec);
+          spec = compiled.spec;
+        }
+
+        done(spec);
         """}
 
-def save_spec(spec, fp, mode=None, format=None, driver_timeout=10):
-    """Save a spec to file
 
-    Parameters
-    ----------
-    spec : dict
-        a dictionary representing a vega-lite plot spec
-    fp : string or file-like object
-        the filename or file object at which the result will be saved
-    mode : string or None
-        The rendering mode ('vega' or 'vega-lite'). If None, the mode will be
-        inferred from the $schema attribute of the spec, or will default to
-        'vega' if $schema is not in the spec.
-    format : string (optional)
-        the file format to be saved. If not specified, it will be inferred
-        from the extension of filename.
-    driver_timeout : int (optional)
-        the number of seconds to wait for page load before raising an
-        error (default: 10)
-
-    Note
-    ----
-    This requires the pillow, selenium, and chrome headless packages to be
-    installed.
-    """
-    # TODO: allow package versions to be specified
+def compile_spec(spec, format, mode,
+                 vega_version, vegaembed_version, vegalite_version,
+                 driver_timeout=10, webdriver='chrome'):
     # TODO: detect & use local Jupyter caches of JS packages?
 
-    if format is None and isinstance(fp, six.string_types):
-        format = fp.split('.')[-1]
+    if format not in ['png', 'svg', 'vega']:
+        raise NotImplementedError("format must be 'svg', 'png' or 'vega'")
 
-    if format not in ['png', 'svg']:
-        raise NotImplementedError("save_spec only supports 'svg' and 'png'")
-
-    webdriver = attempt_import('selenium.webdriver',
-                               'save_spec requires the selenium package')
-    Options = attempt_import('selenium.webdriver.chrome.options',
-                             'save_spec requires the selenium package').Options
-
-    if mode is None:
-        if '$schema' in spec:
-            mode = spec['$schema'].split('/')[-2]
-        else:
-            mode = 'vega'
     if mode not in ['vega', 'vega-lite']:
-        raise ValueError("mode must be 'vega' or 'vega-lite'")
+        raise ValueError("mode must be either 'vega' or 'vega-lite'")
+
+    if vega_version is None:
+        raise ValueError("must specify vega_version")
+
+    if vegaembed_version is None:
+        raise ValueError("must specify vegaembed_version")
+
+    if mode == 'vega-lite' and vegalite_version is None:
+        raise ValueError("must specify vega-lite version")
+
+    if selenium is None:
+        raise ImportError("selenium package is required "
+                          "for saving chart as {0}".format(format))
+    if webdriver == 'chrome':
+        webdriver_class = selenium.webdriver.Chrome
+        webdriver_options_class = selenium.webdriver.chrome.options.Options
+    elif webdriver == 'firefox':
+        webdriver_class = selenium.webdriver.Firefox
+        webdriver_options_class = selenium.webdriver.firefox.options.Options
+    else:
+        raise ValueError("webdriver must be 'chrome' or 'firefox'")
+
+    html = HTML_TEMPLATE.format(vega_version=vega_version,
+                                vegalite_version=vegalite_version,
+                                vegaembed_version=vegaembed_version)
+
+    webdriver_options = webdriver_options_class()
+    webdriver_options.add_argument("--headless")
+
+    if issubclass(webdriver_class, selenium.webdriver.Chrome):
+        # for linux/osx root user, need to add --no-sandbox option.
+        # since geteuid doesn't exist on windows, we don't check it
+        if hasattr(os, 'geteuid') and (os.geteuid() == 0):
+            webdriver_options.add_argument('--no-sandbox')
+
+    driver = webdriver_class(options=webdriver_options)
 
     try:
-        chrome_options = Options()
-        chrome_options.add_argument("--headless")
-        driver = webdriver.Chrome(chrome_options=chrome_options)
         driver.set_page_load_timeout(driver_timeout)
 
-        try:
-            fd, htmlfile = tempfile.mkstemp(suffix='.html', text=True)
+        with temporary_filename(suffix='.html') as htmlfile:
             with open(htmlfile, 'w') as f:
-                f.write(HTML_TEMPLATE)
+                f.write(html)
             driver.get("file://" + htmlfile)
-            render = driver.execute_async_script(EXTRACT_CODE[format],
-                                                 spec, mode)
-        finally:
-            os.remove(htmlfile)
+            online = driver.execute_script("return navigator.onLine")
+            if not online:
+                raise ValueError("Internet connection required for saving "
+                                 "chart as {0}".format(format))
+            return driver.execute_async_script(EXTRACT_CODE[format],
+                                               spec, mode)
     finally:
         driver.close()
-
-    if format == 'png':
-        img_bytes = base64.decodebytes(render.split(',')[1].encode())
-        write_file_or_filename(fp, img_bytes, mode='wb')
-    else:
-        img_bytes = render.encode()
-        write_file_or_filename(fp, img_bytes, mode='wb')

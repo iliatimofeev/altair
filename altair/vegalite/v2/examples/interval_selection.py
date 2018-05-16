@@ -5,7 +5,7 @@ Interval Selection Example
 This is an example of creating a stacked chart for which the domain of the
 top chart can be selected by interacting with the bottom chart.
 """
-# category: interactive
+# category: area charts
 
 import altair as alt
 from vega_datasets import data
@@ -22,8 +22,9 @@ upper = alt.Chart().mark_area().encode(
 )
 
 lower = upper.properties(
-    selection=brush,
     height=60
+).add_selection(
+    brush
 )
 
-chart = alt.vconcat(upper, lower, data=sp500)
+alt.vconcat(upper, lower, data=sp500)

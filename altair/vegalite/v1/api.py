@@ -4,17 +4,17 @@ Main API for Vega-lite spec generation.
 DSL mapping Vega types to IPython traitlets.
 """
 import six
+import warnings
 
+import jsonschema
 import pandas as pd
 
-from .schema import core, channels, Undefined
+from .schema import core, channels, Undefined, SCHEMA_URL
 
 from .data import data_transformers, pipe
 from ... import utils
-from .display import renderers
-
-
-SCHEMA_URL = "https://vega.github.io/schema/vega-lite/v1.json"
+from .display import renderers, VEGALITE_VERSION, VEGA_VERSION, VEGAEMBED_VERSION
+from .theme import themes
 
 
 def _get_channels_mapping():
@@ -26,23 +26,22 @@ def _get_channels_mapping():
     return mapping
 
 
-#*************************************************************************
+# *************************************************************************
 # Formula wrapper
 # - makes field a required first argument of initialization
 # - allows expr trait to be an Expression and processes it properly
-#*************************************************************************
+# *************************************************************************
 
 class Formula(core.Formula):
     def __init__(self, field, expr=Undefined, **kwargs):
         super(Formula, self).__init__(field=field, expr=expr, **kwargs)
 
 
-#*************************************************************************
+# *************************************************************************
 # Top-level Objects
-#*************************************************************************
+# *************************************************************************
 
 class TopLevelMixin(object):
-    _default_spec_values = {"width": 400, "height": 300}
     _class_is_valid_at_instantiation = False
 
     def _prepare_data(self):
@@ -89,9 +88,9 @@ class TopLevelMixin(object):
             if '$schema' not in dct:
                 dct['$schema'] = SCHEMA_URL
 
-            # add default values if present
-            if copy._default_spec_values:
-                dct = utils.update_nested(copy._default_spec_values, dct, copy=True)
+            # apply theme from theme registry
+            the_theme = themes.get()
+            dct = utils.update_nested(the_theme(), dct, copy=True)
         return dct
 
     def savechart(self, fp, format=None, **kwargs):
@@ -104,35 +103,55 @@ class TopLevelMixin(object):
         fp : string filename or file-like object
             file in which to write the chart.
         format : string (optional)
-            the format to write: one of ['json', 'html', 'png', 'eps'].
+            the format to write: one of ['json', 'html', 'png', 'svg'].
             If not specified, the format will be determined from the filename.
         **kwargs :
             Additional keyword arguments are passed to the output method
             associated with the specified format.
         """
+        warnings.warn(
+            "Chart.savechart is deprecated in favor of Chart.save",
+            DeprecationWarning
+        )
+        return self.save(fp, format=None, **kwargs)
 
-        if isinstance(fp, six.string_types):
-            format = fp.split('.')[-1]
+    def save(self, fp, format=None, override_data_transformer=True, **kwargs):
+        """Save a chart to file in a variety of formats
 
-        if format is None:
-            raise ValueError("must specify file format: "
-                             "['png', 'eps', 'html', 'json']")
-        elif format == 'json':
-            utils.write_file_or_filename(fp, self.to_json(**kwargs), mode='w')
-        elif format == 'html':
-            from .html import HTML_TEMPLATE
-            opt = dict(renderer=kwargs.pop('renderer', 'canvas'),
-                       actions=kwargs.pop('actions', False))
-            if opt['renderer'] not in ('canvas', 'svg'):
-                raise ValueError("renderer must be 'canvas' or 'svg'")
-            spec_html = HTML_TEMPLATE.format(spec=self.to_json(**kwargs),
-                                             opt=json.dumps(opt))
-            utils.write_file_or_filename(fp, spec_html, mode='w')
-        elif format in ['png', 'svg']:
-            raise NotImplementedError("saving of v1 specs")
-            utils.save_spec(self.to_dict(), fp, format=format, **kwargs)
+        Supported formats are json, html, png, svg
+
+        Parameters
+        ----------
+        fp : string filename or file-like object
+            file in which to write the chart.
+        format : string (optional)
+            the format to write: one of ['json', 'html', 'png', 'svg'].
+            If not specified, the format will be determined from the filename.
+        override_data_transformer : boolean (optional)
+            If True (default), then the save action will be done with the
+            default data_transformer with max_rows set to None. If False,
+            then use the currently active data transformer.
+        **kwargs :
+            Additional keyword arguments are passed to the output method
+            associated with the specified format.
+        """
+        from ...utils.save import save
+
+        kwds = dict(chart=self, fp=fp, format=format,
+                    vegalite_version=VEGALITE_VERSION,
+                    vega_version=VEGA_VERSION,
+                    vegaembed_version=VEGAEMBED_VERSION,
+                    **kwargs)
+
+        # By default we override the data transformer. This makes it so
+        # that save() will succeed even for large datasets that would
+        # normally trigger a MaxBinsError
+        if override_data_transformer:
+            with data_transformers.enable('default', max_rows=None):
+                result = save(**kwds)
         else:
-            raise ValueError("unrecognized format: '{0}'".format(format))
+            result = save(**kwds)
+        return result
 
     # transform method
     @utils.use_signature(core.Transform)
@@ -232,12 +251,56 @@ class TopLevelMixin(object):
         else:
             return renderers.get()(dct)
 
+    def display(self):
+        """Display chart in Jupyter notebook or JupyterLab"""
+        from IPython.display import display
+        display(self)
+
+    def serve(self, ip='127.0.0.1', port=8888, n_retries=50, files=None,
+              jupyter_warning=True, open_browser=True, http_server=None,
+              **kwargs):
+        """Open a browser window and display a rendering of the chart
+
+        Parameters
+        ----------
+        html : string
+            HTML to serve
+        ip : string (default = '127.0.0.1')
+            ip address at which the HTML will be served.
+        port : int (default = 8888)
+            the port at which to serve the HTML
+        n_retries : int (default = 50)
+            the number of nearby ports to search if the specified port
+            is already in use.
+        files : dictionary (optional)
+            dictionary of extra content to serve
+        jupyter_warning : bool (optional)
+            if True (default), then print a warning if this is used
+            within the Jupyter notebook
+        open_browser : bool (optional)
+            if True (default), then open a web browser to the given HTML
+        http_server : class (optional)
+            optionally specify an HTTPServer class to use for showing the
+            figure. The default is Python's basic HTTPServer.
+        **kwargs :
+            additional keyword arguments passed to the save() method
+        """
+        from ...utils.server import serve
+
+        html = six.StringIO()
+        self.save(html, format='html', **kwargs)
+        html.seek(0)
+
+        serve(html.read(), ip=ip, port=port, n_retries=n_retries,
+              files=files, jupyter_warning=jupyter_warning,
+              open_browser=open_browser, http_server=http_server)
+
 
 class Chart(TopLevelMixin, core.ExtendedUnitSpec):
     def __init__(self, data=Undefined, encoding=Undefined, mark=Undefined,
-                 width=400, height=300, **kwargs):
+                 **kwargs):
         super(Chart, self).__init__(data=data, encoding=encoding, mark=mark,
-                                    width=width, height=height, **kwargs)
+                                    **kwargs)
 
     @utils.use_signature(core.MarkConfig)
     def mark_area(self, **kwargs):

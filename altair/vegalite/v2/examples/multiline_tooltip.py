@@ -1,11 +1,14 @@
 """
-Multi-Lite Tooltip
+Multi-Line Tooltip
 ==================
-This example shows how you can use selections and layers to create a multi-line tooltip
-that tracks the x position of the cursor.
-"""
-# category: interactive
+This example shows how you can use selections and layers to create a
+multi-line tooltip that tracks the x position of the cursor.
 
+To find the x-position of the cursor, we employ a little trick: we add some
+transparent points with only an x encoding (no y encoding) and tie a
+*nearest* selection to these, tied to the "x" field.
+"""
+# category: interactive charts
 import altair as alt
 import pandas as pd
 import numpy as np
@@ -31,8 +34,8 @@ line = alt.Chart().mark_line(interpolate='basis').encode(
 selectors = alt.Chart().mark_point().encode(
     x='x:Q',
     opacity=alt.value(0),
-).properties(
-    selection=nearest
+).add_selection(
+    nearest
 )
 
 # Draw points on the line, and highlight based on selection
@@ -49,9 +52,9 @@ text = line.mark_text(align='left', dx=5, dy=-5).encode(
 rules = alt.Chart().mark_rule(color='gray').encode(
     x='x:Q',
 ).transform_filter(
-    nearest.ref()
+    nearest
 )
 
 # Put the five layers into a chart and bind the data
-chart = alt.layer(line, selectors, points, rules, text,
-                  data=data, width=600, height=300)
+alt.layer(line, selectors, points, rules, text,
+          data=data, width=600, height=300)
