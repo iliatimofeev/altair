@@ -63,7 +63,13 @@ class axis(VegaSchema):
 
     scale : string
 
+    bandPosition : oneOf(float, numberValue)
+
     domain : boolean
+
+    domainColor : oneOf(None, string, colorValue)
+
+    domainWidth : oneOf(float, numberValue)
 
     encode : Mapping(required=[])
 
@@ -71,17 +77,43 @@ class axis(VegaSchema):
 
     grid : boolean
 
+    gridColor : oneOf(None, string, colorValue)
+
+    gridDash : oneOf(List(float), arrayValue)
+
+    gridOpacity : oneOf(float, numberValue)
+
     gridScale : string
 
+    gridWidth : oneOf(float, numberValue)
+
+    labelAlign : oneOf(enum('left', 'right', 'center'), alignValue)
+
+    labelAngle : oneOf(float, numberValue)
+
+    labelBaseline : oneOf(enum('top', 'middle', 'bottom', 'alphabetic'), baselineValue)
+
     labelBound : oneOf(boolean, float)
+
+    labelColor : oneOf(None, string, colorValue)
 
     labelFlush : oneOf(boolean, float)
 
     labelFlushOffset : float
 
-    labelOverlap : oneOf(boolean, enum('parity', 'greedy'))
+    labelFont : oneOf(string, stringValue)
 
-    labelPadding : float
+    labelFontSize : oneOf(float, numberValue)
+
+    labelFontWeight : oneOf(enum(None, 'normal', 'bold', 'lighter', 'bolder', '100', '200',
+    '300', '400', '500', '600', '700', '800', '900', 100, 200, 300, 400, 500, 600, 700, 800,
+    900), fontWeightValue)
+
+    labelLimit : oneOf(float, numberValue)
+
+    labelOverlap : labelOverlap
+
+    labelPadding : oneOf(float, numberValue)
 
     labels : boolean
 
@@ -93,17 +125,49 @@ class axis(VegaSchema):
 
     position : oneOf(float, numberValue)
 
+    tickColor : oneOf(None, string, colorValue)
+
     tickCount : tickCount
 
-    tickSize : float
+    tickExtra : numberOrSignal
+
+    tickOffset : oneOf(float, numberValue)
+
+    tickRound : oneOf(boolean, booleanValue)
+
+    tickSize : oneOf(float, numberValue)
+
+    tickWidth : oneOf(float, numberValue)
 
     ticks : boolean
 
     title : stringOrSignal
 
+    titleAlign : oneOf(enum('left', 'right', 'center'), alignValue)
+
+    titleAngle : oneOf(float, numberValue)
+
+    titleBaseline : oneOf(enum('top', 'middle', 'bottom', 'alphabetic'), baselineValue)
+
+    titleColor : oneOf(None, string, colorValue)
+
+    titleFont : oneOf(string, stringValue)
+
+    titleFontSize : oneOf(float, numberValue)
+
+    titleFontWeight : oneOf(enum(None, 'normal', 'bold', 'lighter', 'bolder', '100', '200',
+    '300', '400', '500', '600', '700', '800', '900', 100, 200, 300, 400, 500, 600, 700, 800,
+    900), fontWeightValue)
+
+    titleLimit : oneOf(float, numberValue)
+
     titlePadding : oneOf(float, numberValue)
 
-    values : oneOf(List(Mapping(required=[])), signal)
+    titleX : oneOf(float, numberValue)
+
+    titleY : oneOf(float, numberValue)
+
+    values : arrayOrSignal
 
     zindex : float
 
@@ -111,21 +175,41 @@ class axis(VegaSchema):
     _schema = {'$ref': '#/defs/axis'}
     _rootschema = Root._schema
 
-    def __init__(self, orient=Undefined, scale=Undefined, domain=Undefined, encode=Undefined,
-                 format=Undefined, grid=Undefined, gridScale=Undefined, labelBound=Undefined,
-                 labelFlush=Undefined, labelFlushOffset=Undefined, labelOverlap=Undefined,
-                 labelPadding=Undefined, labels=Undefined, maxExtent=Undefined, minExtent=Undefined,
-                 offset=Undefined, position=Undefined, tickCount=Undefined, tickSize=Undefined,
-                 ticks=Undefined, title=Undefined, titlePadding=Undefined, values=Undefined,
-                 zindex=Undefined, **kwds):
-        super(axis, self).__init__(orient=orient, scale=scale, domain=domain, encode=encode,
-                                   format=format, grid=grid, gridScale=gridScale, labelBound=labelBound,
-                                   labelFlush=labelFlush, labelFlushOffset=labelFlushOffset,
-                                   labelOverlap=labelOverlap, labelPadding=labelPadding, labels=labels,
-                                   maxExtent=maxExtent, minExtent=minExtent, offset=offset,
-                                   position=position, tickCount=tickCount, tickSize=tickSize,
-                                   ticks=ticks, title=title, titlePadding=titlePadding, values=values,
-                                   zindex=zindex, **kwds)
+    def __init__(self, orient=Undefined, scale=Undefined, bandPosition=Undefined, domain=Undefined,
+                 domainColor=Undefined, domainWidth=Undefined, encode=Undefined, format=Undefined,
+                 grid=Undefined, gridColor=Undefined, gridDash=Undefined, gridOpacity=Undefined,
+                 gridScale=Undefined, gridWidth=Undefined, labelAlign=Undefined, labelAngle=Undefined,
+                 labelBaseline=Undefined, labelBound=Undefined, labelColor=Undefined,
+                 labelFlush=Undefined, labelFlushOffset=Undefined, labelFont=Undefined,
+                 labelFontSize=Undefined, labelFontWeight=Undefined, labelLimit=Undefined,
+                 labelOverlap=Undefined, labelPadding=Undefined, labels=Undefined, maxExtent=Undefined,
+                 minExtent=Undefined, offset=Undefined, position=Undefined, tickColor=Undefined,
+                 tickCount=Undefined, tickExtra=Undefined, tickOffset=Undefined, tickRound=Undefined,
+                 tickSize=Undefined, tickWidth=Undefined, ticks=Undefined, title=Undefined,
+                 titleAlign=Undefined, titleAngle=Undefined, titleBaseline=Undefined,
+                 titleColor=Undefined, titleFont=Undefined, titleFontSize=Undefined,
+                 titleFontWeight=Undefined, titleLimit=Undefined, titlePadding=Undefined,
+                 titleX=Undefined, titleY=Undefined, values=Undefined, zindex=Undefined, **kwds):
+        super(axis, self).__init__(orient=orient, scale=scale, bandPosition=bandPosition, domain=domain,
+                                   domainColor=domainColor, domainWidth=domainWidth, encode=encode,
+                                   format=format, grid=grid, gridColor=gridColor, gridDash=gridDash,
+                                   gridOpacity=gridOpacity, gridScale=gridScale, gridWidth=gridWidth,
+                                   labelAlign=labelAlign, labelAngle=labelAngle,
+                                   labelBaseline=labelBaseline, labelBound=labelBound,
+                                   labelColor=labelColor, labelFlush=labelFlush,
+                                   labelFlushOffset=labelFlushOffset, labelFont=labelFont,
+                                   labelFontSize=labelFontSize, labelFontWeight=labelFontWeight,
+                                   labelLimit=labelLimit, labelOverlap=labelOverlap,
+                                   labelPadding=labelPadding, labels=labels, maxExtent=maxExtent,
+                                   minExtent=minExtent, offset=offset, position=position,
+                                   tickColor=tickColor, tickCount=tickCount, tickExtra=tickExtra,
+                                   tickOffset=tickOffset, tickRound=tickRound, tickSize=tickSize,
+                                   tickWidth=tickWidth, ticks=ticks, title=title, titleAlign=titleAlign,
+                                   titleAngle=titleAngle, titleBaseline=titleBaseline,
+                                   titleColor=titleColor, titleFont=titleFont,
+                                   titleFontSize=titleFontSize, titleFontWeight=titleFontWeight,
+                                   titleLimit=titleLimit, titlePadding=titlePadding, titleX=titleX,
+                                   titleY=titleY, values=values, zindex=zindex, **kwds)
 
 
 class background(VegaSchema):
@@ -205,23 +289,11 @@ class encodeEntry(VegaSchema):
     Attributes
     ----------
 
-    align : oneOf(List(allOf(rule, allOf(stringModifiers, anyOf(oneOf(signal,
-    Mapping(required=[value]), Mapping(required=[field]), Mapping(required=[range])),
-    Mapping(required=[scale, value]), Mapping(required=[scale, band]),
-    Mapping(required=[offset]))))), allOf(stringModifiers, anyOf(oneOf(signal,
-    Mapping(required=[value]), Mapping(required=[field]), Mapping(required=[range])),
-    Mapping(required=[scale, value]), Mapping(required=[scale, band]),
-    Mapping(required=[offset]))))
+    align : alignValue
 
     angle : numberValue
 
-    baseline : oneOf(List(allOf(rule, allOf(stringModifiers, anyOf(oneOf(signal,
-    Mapping(required=[value]), Mapping(required=[field]), Mapping(required=[range])),
-    Mapping(required=[scale, value]), Mapping(required=[scale, band]),
-    Mapping(required=[offset]))))), allOf(stringModifiers, anyOf(oneOf(signal,
-    Mapping(required=[value]), Mapping(required=[field]), Mapping(required=[range])),
-    Mapping(required=[scale, value]), Mapping(required=[scale, band]),
-    Mapping(required=[offset]))))
+    baseline : baselineValue
 
     clip : booleanValue
 
@@ -259,13 +331,7 @@ class encodeEntry(VegaSchema):
 
     opacity : numberValue
 
-    orient : oneOf(List(allOf(rule, allOf(stringModifiers, anyOf(oneOf(signal,
-    Mapping(required=[value]), Mapping(required=[field]), Mapping(required=[range])),
-    Mapping(required=[scale, value]), Mapping(required=[scale, band]),
-    Mapping(required=[offset]))))), allOf(stringModifiers, anyOf(oneOf(signal,
-    Mapping(required=[value]), Mapping(required=[field]), Mapping(required=[range])),
-    Mapping(required=[scale, value]), Mapping(required=[scale, band]),
-    Mapping(required=[offset]))))
+    orient : orientValue
 
     outerRadius : numberValue
 
@@ -273,7 +339,7 @@ class encodeEntry(VegaSchema):
 
     radius : numberValue
 
-    shape : anyOf(string, stringValue)
+    shape : stringValue
 
     size : numberValue
 
@@ -1589,6 +1655,8 @@ class contourTransform(VegaSchema):
 
     values : oneOf(List(anyOf(float, signal)), signal)
 
+    weight : oneOf(scaleField, paramField, expr)
+
     x : oneOf(scaleField, paramField, expr)
 
     y : oneOf(scaleField, paramField, expr)
@@ -1599,11 +1667,12 @@ class contourTransform(VegaSchema):
 
     def __init__(self, size=Undefined, type=Undefined, bandwidth=Undefined, cellSize=Undefined,
                  count=Undefined, nice=Undefined, signal=Undefined, smooth=Undefined,
-                 thresholds=Undefined, values=Undefined, x=Undefined, y=Undefined, **kwds):
+                 thresholds=Undefined, values=Undefined, weight=Undefined, x=Undefined, y=Undefined,
+                 **kwds):
         super(contourTransform, self).__init__(size=size, type=type, bandwidth=bandwidth,
                                                cellSize=cellSize, count=count, nice=nice, signal=signal,
-                                               smooth=smooth, thresholds=thresholds, values=values, x=x,
-                                               y=y, **kwds)
+                                               smooth=smooth, thresholds=thresholds, values=values,
+                                               weight=weight, x=x, y=y, **kwds)
 
 
 class geojsonTransform(VegaSchema):
@@ -1814,8 +1883,6 @@ class nestTransform(VegaSchema):
 
     generate : anyOf(boolean, signal)
 
-    key : oneOf(scaleField, paramField, expr)
-
     keys : oneOf(List(oneOf(scaleField, paramField, expr)), signal)
 
     signal : string
@@ -1824,10 +1891,9 @@ class nestTransform(VegaSchema):
     _schema = {'$ref': '#/defs/nestTransform'}
     _rootschema = Root._schema
 
-    def __init__(self, type=Undefined, generate=Undefined, key=Undefined, keys=Undefined,
-                 signal=Undefined, **kwds):
-        super(nestTransform, self).__init__(type=type, generate=generate, key=key, keys=keys,
-                                            signal=signal, **kwds)
+    def __init__(self, type=Undefined, generate=Undefined, keys=Undefined, signal=Undefined, **kwds):
+        super(nestTransform, self).__init__(type=type, generate=generate, keys=keys, signal=signal,
+                                            **kwds)
 
 
 class packTransform(VegaSchema):
@@ -1967,16 +2033,14 @@ class treelinksTransform(VegaSchema):
 
     type : enum('treelinks')
 
-    key : oneOf(scaleField, paramField, expr)
-
     signal : string
 
     """
     _schema = {'$ref': '#/defs/treelinksTransform'}
     _rootschema = Root._schema
 
-    def __init__(self, type=Undefined, key=Undefined, signal=Undefined, **kwds):
-        super(treelinksTransform, self).__init__(type=type, key=key, signal=signal, **kwds)
+    def __init__(self, type=Undefined, signal=Undefined, **kwds):
+        super(treelinksTransform, self).__init__(type=type, signal=signal, **kwds)
 
 
 class treemapTransform(VegaSchema):
@@ -2166,6 +2230,18 @@ class resolvefilterTransform(VegaSchema):
                                                      signal=signal, **kwds)
 
 
+class labelOverlap(VegaSchema):
+    """labelOverlap schema wrapper
+
+    oneOf(boolean, enum('parity', 'greedy'))
+    """
+    _schema = {'$ref': '#/refs/labelOverlap'}
+    _rootschema = Root._schema
+
+    def __init__(self, *args, **kwds):
+        super(labelOverlap, self).__init__(*args, **kwds)
+
+
 class tickCount(VegaSchema):
     """tickCount schema wrapper
 
@@ -2200,6 +2276,8 @@ class paramField(VegaSchema):
     ----------
 
     field : string
+
+    as : string
 
     """
     _schema = {'$ref': '#/refs/paramField'}
@@ -2404,6 +2482,57 @@ class fontWeightValue(VegaSchema):
         super(fontWeightValue, self).__init__(*args, **kwds)
 
 
+class alignValue(VegaSchema):
+    """alignValue schema wrapper
+
+    oneOf(List(allOf(rule, allOf(stringModifiers, anyOf(oneOf(signal, Mapping(required=[value]),
+    Mapping(required=[field]), Mapping(required=[range])), Mapping(required=[scale, value]),
+    Mapping(required=[scale, band]), Mapping(required=[offset]))))), allOf(stringModifiers,
+    anyOf(oneOf(signal, Mapping(required=[value]), Mapping(required=[field]),
+    Mapping(required=[range])), Mapping(required=[scale, value]), Mapping(required=[scale,
+    band]), Mapping(required=[offset]))))
+    """
+    _schema = {'$ref': '#/refs/alignValue'}
+    _rootschema = Root._schema
+
+    def __init__(self, *args, **kwds):
+        super(alignValue, self).__init__(*args, **kwds)
+
+
+class baselineValue(VegaSchema):
+    """baselineValue schema wrapper
+
+    oneOf(List(allOf(rule, allOf(stringModifiers, anyOf(oneOf(signal, Mapping(required=[value]),
+    Mapping(required=[field]), Mapping(required=[range])), Mapping(required=[scale, value]),
+    Mapping(required=[scale, band]), Mapping(required=[offset]))))), allOf(stringModifiers,
+    anyOf(oneOf(signal, Mapping(required=[value]), Mapping(required=[field]),
+    Mapping(required=[range])), Mapping(required=[scale, value]), Mapping(required=[scale,
+    band]), Mapping(required=[offset]))))
+    """
+    _schema = {'$ref': '#/refs/baselineValue'}
+    _rootschema = Root._schema
+
+    def __init__(self, *args, **kwds):
+        super(baselineValue, self).__init__(*args, **kwds)
+
+
+class orientValue(VegaSchema):
+    """orientValue schema wrapper
+
+    oneOf(List(allOf(rule, allOf(stringModifiers, anyOf(oneOf(signal, Mapping(required=[value]),
+    Mapping(required=[field]), Mapping(required=[range])), Mapping(required=[scale, value]),
+    Mapping(required=[scale, band]), Mapping(required=[offset]))))), allOf(stringModifiers,
+    anyOf(oneOf(signal, Mapping(required=[value]), Mapping(required=[field]),
+    Mapping(required=[range])), Mapping(required=[scale, value]), Mapping(required=[scale,
+    band]), Mapping(required=[offset]))))
+    """
+    _schema = {'$ref': '#/refs/orientValue'}
+    _rootschema = Root._schema
+
+    def __init__(self, *args, **kwds):
+        super(orientValue, self).__init__(*args, **kwds)
+
+
 class colorRGB(VegaSchema):
     """colorRGB schema wrapper
 
@@ -2513,6 +2642,8 @@ class expr(VegaSchema):
     ----------
 
     expr : string
+
+    as : string
 
     """
     _schema = {'$ref': '#/refs/expr'}
@@ -2698,6 +2829,18 @@ class signal(VegaSchema):
 
     def __init__(self, signal=Undefined, **kwds):
         super(signal, self).__init__(signal=signal, **kwds)
+
+
+class arrayOrSignal(VegaSchema):
+    """arrayOrSignal schema wrapper
+
+    oneOf(List(Mapping(required=[])), signal)
+    """
+    _schema = {'$ref': '#/refs/arrayOrSignal'}
+    _rootschema = Root._schema
+
+    def __init__(self, *args, **kwds):
+        super(arrayOrSignal, self).__init__(*args, **kwds)
 
 
 class booleanOrSignal(VegaSchema):

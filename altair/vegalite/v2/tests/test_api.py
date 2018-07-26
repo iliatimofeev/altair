@@ -301,6 +301,20 @@ def test_transforms():
     kwds = {'as': 'foo', 'field': 'x', 'timeUnit': 'date'}
     assert chart.transform == [alt.TimeUnitTransform(**kwds)]
 
+    # window transform
+    chart = alt.Chart().transform_window(xsum='sum(x)', ymin='min(y)',
+                                         frame=[None, 0])
+    window = [alt.WindowFieldDef(**{'as': 'xsum', 'field': 'x', 'op': 'sum'}),
+              alt.WindowFieldDef(**{'as': 'ymin', 'field': 'y', 'op': 'min'})]
+
+    # kwargs don't maintain order in Python < 3.6, so window list can
+    # be reversed
+    assert (chart.transform == [alt.WindowTransform(frame=[None, 0],
+                                                    window=window)]
+            or chart.transform == [alt.WindowTransform(frame=[None, 0],
+                                                       window=window[::-1])])
+            
+
 
 def test_resolve_methods():
     chart = alt.LayerChart().resolve_axis(x='shared', y='independent')
@@ -378,3 +392,30 @@ def test_chart_from_dict():
     # test that an invalid spec leads to a schema validation error
     with pytest.raises(jsonschema.ValidationError):
         alt.Chart.from_dict({'invalid': 'spec'})
+
+
+def test_consolidate_datasets(basic_chart):
+    chart = basic_chart | basic_chart
+
+    with alt.data_transformers.enable(consolidate_datasets=True):
+        dct_consolidated = chart.to_dict()
+
+    with alt.data_transformers.enable(consolidate_datasets=False):
+        dct_standard = chart.to_dict()
+
+    assert 'datasets' in dct_consolidated
+    assert 'datasets' not in dct_standard
+
+    datasets = dct_consolidated['datasets']
+
+    # two dataset copies should be recognized as duplicates
+    assert len(datasets) == 1
+
+    # make sure data matches original & names are correct
+    name, data = datasets.popitem()
+
+    for spec in dct_standard['hconcat']:
+        assert spec['data']['values'] == data
+
+    for spec in dct_consolidated['hconcat']:
+        assert spec['data'] == {'name': name}
