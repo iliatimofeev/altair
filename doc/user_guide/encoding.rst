@@ -53,20 +53,27 @@ longitude   :class:`Longitude`   Longitude for geo charts           :ref:`galler
 latitude    :class:`Latitude`    Latitude for geo charts            :ref:`gallery_airports`
 longitude2  :class:`Longitude2`  Second longitude value for ranges  N/A
 latitude2   :class:`Latitude2`   Second latitude value for ranges   N/A
+xerror      :class:`XError`      The x-axis error value             N/A
+yerror      :class:`YError`      The y-axis error value             N/A
+xerror2     :class:`XError2`     The second x-axis error value      N/A
+yerror2     :class:`YError2`     The second y-axis error value      N/A
 ==========  ===================  =================================  ===================================
 
 Mark Property Channels:
 
-=======  ================  ========================  =========================================
-Channel  Altair Class      Description               Example
-=======  ================  ========================  =========================================
-color    :class:`Color`    The color of the mark     :ref:`gallery_simple_heatmap`
-fill     :class:`Fill`     The fill for the mark     N/A
-opacity  :class:`Opacity`  The opacity of the mark   :ref:`gallery_horizon_graph`
-shape    :class:`Shape`    The shape of the mark     N/A
-size     :class:`Size`     The size of the mark      :ref:`gallery_table_bubble_plot_github`
-stroke   :class:`Stroke`   The stroke of the mark    N/A
-=======  ================  ========================  =========================================
+=============  ======================  ==============================  =========================================
+Channel        Altair Class            Description                     Example
+=============  ======================  ==============================  =========================================
+color          :class:`Color`          The color of the mark           :ref:`gallery_simple_heatmap`
+fill           :class:`Fill`           The fill for the mark           N/A
+fillopacity    :class:`FillOpacity`    The opacity of the mark's fill  N/A
+opacity        :class:`Opacity`        The opacity of the mark         :ref:`gallery_horizon_graph`
+shape          :class:`Shape`          The shape of the mark           N/A
+size           :class:`Size`           The size of the mark            :ref:`gallery_table_bubble_plot_github`
+stroke         :class:`Stroke`         The stroke of the mark          N/A
+strokeopacity  :class:`StrokeOpacity`  The opacity of the line         N/A
+strokewidth    :class:`StrokeWidth`    The width of the line           N/A
+=============  ======================  ==============================  =========================================
 
 Text and Tooltip Channels:
 
@@ -253,16 +260,25 @@ titles, binning parameters, aggregation, sorting, and many more.
 The particular options that are available vary by encoding type; the various
 options are listed below.
 
+
 The :class:`X` and :class:`Y` encodings accept the following options:
 
 .. altair-object-table:: altair.PositionFieldDef
 
-The :class:`Color`, :class:`Fill`, :class:`Opacity`, :class:`Shape`,
-:class:`Size`, and :class:`Stroke` encodings accept the following options:
+The :class:`Color`, :class:`Fill`, and :class:`Stroke`  encodings accept the following options:
 
-.. altair-object-table:: altair.MarkPropFieldDefWithCondition
+.. altair-object-table:: altair.ColorFieldDefWithCondition
 
-The :class:`Row` and :class:`Column` encodings accept the following options:
+The :class:`Shape` encoding accepts the following options:
+
+.. altair-object-table:: altair.ShapeFieldDefWithCondition
+
+The :class:`Fillopacity`, :class:`Opacity`, :class:`Size`, :class:`StrokeOpacity`,
+and :class:`Strokewidth` encodings accept the following options:
+
+.. altair-object-table:: altair.NumericFieldDefWithCondition
+
+The :class:`Row`, :class:`Column`, and :class:`Facet` encodings accept the following options:
 
 .. altair-object-table:: altair.FacetFieldDef
 
@@ -270,21 +286,31 @@ The :class:`Text` and :class:`Tooltip` encodings accept the following options:
 
 .. altair-object-table:: altair.TextFieldDefWithCondition
 
-The :class:`Detail`, :class:`Key`, :class:`Latitude`, :class:`Latitude2`,
-:class:`Longitude`, :class:`Longitude2`, :class:`X2`
-and :class:`Y2` encodings accept the following options:
+The :class:`Fillopacity`, :class:`Opacity`, :class:`Size`, :class:`Strokeopacity`,
+and :class:`Strokewidth` encodings accept the following options:
+
+.. altair-object-table:: altair.NumericFieldDefWithCondition
+
+The :class:`Detail` and :class:`Key` encodings accept the following options:
 
 .. altair-object-table:: altair.FieldDef
 
+The :class:`Latitude` and :class:`Longitude` encodings accept the following options:
+
+.. altair-object-table:: altair.LatLongFieldDef
+
+The :class:`Latitude2`, :class:`Longitude2`, :class:`X2`, :class:`Y2`, :class:`Xerror`, :class:`Yerror`,
+:class:`Xerror2`, and :class:`Yerror2` encodings accept the following options:
+
+.. altair-object-table:: altair.SecondaryFieldDef
+
 The :class:`Href` encoding accepts the following options:
 
-.. altair-object-table:: altair.FieldDefWithCondition
+.. altair-object-table:: altair.StringFieldDefWithCondition
 
 The :class:`Order` encoding accepts the following options:
 
 .. altair-object-table:: altair.OrderFieldDef
-
-
 
 
 .. _encoding-aggregates:
